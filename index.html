@@ -373,7 +373,31 @@ async function initSender() {
   // ★ 保存済みIDがあればそれを指定、なければPeerJSが自動生成
   const savedId = getSavedSenderId();
   log('保存済みID: ' + (savedId || 'なし（新規生成）'));
-  const peer = new Peer(savedId || undefined, { debug: DEBUG ? 2 : 0 });
+  const peerConfig = {
+    debug: DEBUG ? 2 : 0,
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        {
+          urls: 'turn:openrelay.metered.ca:80',
+          username: 'openrelayproject',
+          credential: 'openrelayproject'
+        },
+        {
+          urls: 'turn:openrelay.metered.ca:443',
+          username: 'openrelayproject',
+          credential: 'openrelayproject'
+        },
+        {
+          urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+          username: 'openrelayproject',
+          credential: 'openrelayproject'
+        }
+      ]
+    }
+  };
+  const peer = new Peer(savedId || undefined, peerConfig);
 
   peer.on('open', (id) => {
     log('PeerID確立: ' + id);
@@ -468,7 +492,30 @@ function initReceiver(roomId) {
   setStatus('waiting', '送信側に接続しています...');
   log('受信側起動 → 送信側: ' + roomId);
 
-  const peer = new Peer(undefined, { debug: DEBUG ? 2 : 0 });
+  const peer = new Peer(undefined, {
+    debug: DEBUG ? 2 : 0,
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        {
+          urls: 'turn:openrelay.metered.ca:80',
+          username: 'openrelayproject',
+          credential: 'openrelayproject'
+        },
+        {
+          urls: 'turn:openrelay.metered.ca:443',
+          username: 'openrelayproject',
+          credential: 'openrelayproject'
+        },
+        {
+          urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+          username: 'openrelayproject',
+          credential: 'openrelayproject'
+        }
+      ]
+    }
+  });
 
   peer.on('open', (myId) => {
     log('受信側PeerID: ' + myId);
