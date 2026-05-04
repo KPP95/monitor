@@ -217,6 +217,23 @@
   .stop-btn:hover { border-color: var(--muted); color: var(--text); }
   .stop-btn.show { display: block; }
 
+  .reconnect-btn {
+    background: none; border: 1px solid rgba(126,200,160,0.4); color: var(--success);
+    padding: 10px 20px; border-radius: 8px;
+    font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 0.15em;
+    cursor: pointer; transition: all 0.2s; width: 100%; text-transform: uppercase; display: none;
+  }
+  .reconnect-btn:hover { border-color: var(--success); background: rgba(126,200,160,0.08); }
+  .reconnect-btn.show { display: block; }
+
+  .mute-notice {
+    background: rgba(126,158,200,0.08); border: 1px solid rgba(126,158,200,0.3);
+    border-radius: 8px; padding: 10px 16px; font-size: 13px;
+    color: var(--accent2); width: 100%; text-align: center; display: none;
+    font-family: 'Space Mono', monospace; letter-spacing: 0.05em;
+  }
+  .mute-notice.show { display: block; }
+
   .volume-control { width: 100%; display: none; flex-direction: column; gap: 8px; }
   .volume-control.show { display: flex; }
   .volume-label { font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 0.25em; color: var(--muted); text-transform: uppercase; }
@@ -312,7 +329,9 @@
     <button class="disconnect-btn" id="disconnectBtn">接続を切断する</button>
     <button class="start-btn" id="startBtn">待ち受けを再開する</button>
     <button class="stop-btn" id="stopBtn">待ち受けを終了する</button>
+    <button class="reconnect-btn" id="reconnectBtn">再接続する</button>
     <button class="mute-btn" id="muteBtn">🎙 ミュート</button>
+    <div class="mute-notice" id="muteNotice">🔇 送信側がミュート中</div>
 
     <div class="volume-control" id="volumeControl">
       <div class="volume-label">音量</div>
@@ -454,9 +473,15 @@ async function initSender() {
     muteBtn.textContent = muted ? '🔇 ミュート中' : '🎙 ミュート';
     muteBtn.classList.toggle('muted', muted);
     log(muted ? 'ミュートON' : 'ミュートOFF');
+    // 接続中のDataConnectionにミュート状態を通知
+    if (activeConn && activeConn.open) {
+      activeConn.send(JSON.stringify({ type: 'mute', muted }));
+    }
   }
 
   muteBtn.addEventListener('click', () => setMute(!muted));
+
+  let activeConn = null;
 
   // ★ 保存済みIDがあればそれを指定、なければPeerJSが自動生成
   const savedId = getSavedSenderId();
@@ -514,10 +539,14 @@ async function initSender() {
   function handleConnection(conn) {
     if (!listening) {
       log('待ち受け終了中のため接続を拒否: ' + conn.peer);
-      conn.close();
+      conn.on('open', () => {
+        conn.send(JSON.stringify({ type: 'rejected' }));
+        setTimeout(() => conn.close(), 500);
+      });
       return;
     }
     log('受信側からデータ接続: ' + conn.peer);
+    activeConn = conn;
     conn.on('open', () => {
       log('データ接続確立 → call発信');
       const call = peer.call(conn.peer, micStream);
@@ -526,7 +555,9 @@ async function initSender() {
       setConnected();
       startLevelMeter(micStream);
 
-      // 通話中：切断・ミュートのみ表示
+      // 接続直後に現在のミュート状態を通知
+      conn.send(JSON.stringify({ type: 'mute', muted }));
+
       stopBtn.classList.remove('show');
       startBtn.classList.remove('show');
       disconnectBtn.classList.add('show');
@@ -536,9 +567,10 @@ async function initSender() {
 
       call.on('close', () => {
         log('通話終了 → 待ち受け状態に戻る');
+        activeConn = null;
         disconnectBtn.classList.remove('show');
         muteBtn.classList.remove('show');
-        setMute(false); // ミュート解除
+        setMute(false);
         listening = true;
         stopBtn.classList.add('show');
         setStatus('waiting', '受信側の接続を待っています...');
@@ -649,14 +681,41 @@ function initReceiver(roomId) {
     }
   });
 
-  peer.on('open', (myId) => {
-    log('受信側PeerID: ' + myId);
-    const conn = peer.connect(roomId, { reliable: true });
+  const reconnectBtn = $('reconnectBtn');
+  const muteNotice = $('muteNotice');
+  let currentPeer = null;
+
+  function doConnect() {
+    reconnectBtn.classList.remove('show');
+    muteNotice.classList.remove('show');
+    setStatus('waiting', '送信側に接続しています...');
+    const conn = currentPeer.connect(roomId, { reliable: true });
     conn.on('open', () => {
       log('データ接続確立 → callを待機');
       setStatus('waiting', '送信側の応答を待っています...');
     });
+    conn.on('data', (data) => {
+      try {
+        const msg = JSON.parse(data);
+        if (msg.type === 'rejected') {
+          log('接続を拒否されました');
+          setStatus('error', '送信側が待ち受けを終了しています');
+          reconnectBtn.classList.add('show');
+        } else if (msg.type === 'mute') {
+          muteNotice.classList.toggle('show', msg.muted);
+          log('ミュート状態受信: ' + msg.muted);
+        }
+      } catch(e) {}
+    });
     conn.on('error', e => log('connエラー: ' + e));
+  }
+
+  reconnectBtn.addEventListener('click', doConnect);
+
+  peer.on('open', (myId) => {
+    log('受信側PeerID: ' + myId);
+    currentPeer = peer;
+    doConnect();
   });
 
   peer.on('call', (call) => {
@@ -680,16 +739,20 @@ function initReceiver(roomId) {
         call.close();
         remoteAudio.srcObject = null;
         disconnectBtn.classList.remove('show');
+        muteNotice.classList.remove('show');
         orb.classList.remove('connected', 'active-audio');
         rings.forEach(r => r.classList.remove('active'));
-        setStatus('waiting', '切断しました<br>再接続するにはページを再読み込みしてください');
+        setStatus('waiting', '切断しました');
+        reconnectBtn.classList.add('show');
         log('手動切断');
       };
     });
 
     call.on('close', () => {
       disconnectBtn.classList.remove('show');
-      setStatus('error', '接続が切れました<br>ページを再読み込みしてください');
+      muteNotice.classList.remove('show');
+      setStatus('error', '接続が切れました');
+      reconnectBtn.classList.add('show');
       orb.classList.remove('connected');
       rings.forEach(r => r.classList.remove('active'));
     });
