@@ -208,6 +208,15 @@
   .mute-btn.show { display: block; }
   .mute-btn.muted { border-color: var(--accent2); color: var(--accent2); background: rgba(126,158,200,0.08); }
 
+  .stop-btn {
+    background: none; border: 1px solid #2a2a3e; color: var(--muted);
+    padding: 10px 20px; border-radius: 8px;
+    font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 0.15em;
+    cursor: pointer; transition: all 0.2s; width: 100%; text-transform: uppercase; display: none;
+  }
+  .stop-btn:hover { border-color: var(--muted); color: var(--text); }
+  .stop-btn.show { display: block; }
+
   .volume-control { width: 100%; display: none; flex-direction: column; gap: 8px; }
   .volume-control.show { display: flex; }
   .volume-label { font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 0.25em; color: var(--muted); text-transform: uppercase; }
@@ -302,6 +311,7 @@
     <button class="share-btn" id="shareBtn">受信側URLをコピー</button>
     <button class="disconnect-btn" id="disconnectBtn">接続を切断する</button>
     <button class="start-btn" id="startBtn">待ち受けを再開する</button>
+    <button class="stop-btn" id="stopBtn">待ち受けを終了する</button>
     <button class="mute-btn" id="muteBtn">🎙 ミュート</button>
 
     <div class="volume-control" id="volumeControl">
@@ -477,7 +487,7 @@ async function initSender() {
 
   peer.on('open', (id) => {
     log('PeerID確立: ' + id);
-    saveSenderId(id); // ★ 生成されたIDを保存（初回のみ意味がある）
+    saveSenderId(id);
 
     $('infoBox').style.display = 'flex';
     $('infoValue').textContent = id;
@@ -493,7 +503,7 @@ async function initSender() {
       }).catch(() => prompt('このURLをコピーしてください:', recvUrl));
     };
 
-    setStatus('waiting', '受信側の接続を待っています...');
+    startListening(); // ★ PeerID確立後に待ち受け開始
   });
 
   peer.on('error', (e) => {
@@ -510,12 +520,24 @@ async function initSender() {
 
   const disconnectBtn = $('disconnectBtn');
   const startBtn = $('startBtn');
+  const stopBtn = $('stopBtn');
 
   function startListening() {
     startBtn.classList.remove('show');
+    stopBtn.classList.add('show');
     setStatus('waiting', '受信側の接続を待っています...');
     peer.on('connection', handleConnection);
   }
+
+  function stopListening() {
+    stopBtn.classList.remove('show');
+    startBtn.classList.add('show');
+    setStatus('waiting', '待ち受けを終了しました');
+    peer.off('connection', handleConnection);
+    log('待ち受け終了');
+  }
+
+  stopBtn.addEventListener('click', stopListening);
 
   function handleConnection(conn) {
     log('受信側からデータ接続: ' + conn.peer);
@@ -528,6 +550,7 @@ async function initSender() {
       startLevelMeter(micStream);
 
       disconnectBtn.classList.add('show');
+      stopBtn.classList.remove('show');
       disconnectBtn.onclick = () => {
         call.close();
         disconnectBtn.classList.remove('show');
@@ -541,6 +564,7 @@ async function initSender() {
       call.on('close', () => {
         log('通話終了');
         disconnectBtn.classList.remove('show');
+        stopBtn.classList.add('show');
         setStatus('waiting', '受信側の接続を待っています...');
         orb.classList.remove('connected', 'active-audio');
         rings.forEach(r => r.classList.remove('active'));
@@ -550,7 +574,6 @@ async function initSender() {
   }
 
   startBtn.addEventListener('click', startListening);
-  startListening(); // 起動時は自動で待ち受け開始
 }
 
 // ─── 受信側 ───────────────────────────────────────────────
