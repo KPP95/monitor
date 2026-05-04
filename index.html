@@ -320,6 +320,7 @@
     <div class="error-box" id="errorBox"></div>
     <div class="sep"></div>
 
+    <button class="mute-btn" id="muteBtn">🎙 ミュート</button>
     <div class="mute-notice" id="muteNotice">🔇 送信側がミュート中</div>
 
     <div class="info-box" id="infoBox" style="display:none">
@@ -332,7 +333,6 @@
     <button class="start-btn" id="startBtn">待ち受けを再開する</button>
     <button class="stop-btn" id="stopBtn">待ち受けを終了する</button>
     <button class="reconnect-btn" id="reconnectBtn">再接続する</button>
-    <button class="mute-btn" id="muteBtn">🎙 ミュート</button>
 
     <div class="volume-control" id="volumeControl">
       <div class="volume-label">音量</div>
@@ -464,8 +464,9 @@ async function initSender() {
     return;
   }
 
-  // ミュートボタン設定
+  // ミュートボタン設定（常時表示）
   const muteBtn = $('muteBtn');
+  muteBtn.classList.add('show');
   let muted = false;
 
   function setMute(val) {
@@ -562,7 +563,6 @@ async function initSender() {
       stopBtn.classList.remove('show');
       startBtn.classList.remove('show');
       disconnectBtn.classList.add('show');
-      muteBtn.classList.add('show');
 
       disconnectBtn.onclick = () => { call.close(); };
 
@@ -570,8 +570,6 @@ async function initSender() {
         log('通話終了 → 待ち受け状態に戻る');
         activeConn = null;
         disconnectBtn.classList.remove('show');
-        muteBtn.classList.remove('show');
-        setMute(false);
         listening = true;
         stopBtn.classList.add('show');
         setStatus('waiting', '受信側の接続を待っています...');
