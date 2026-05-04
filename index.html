@@ -485,6 +485,66 @@ async function initSender() {
   };
   const peer = new Peer(savedId || undefined, peerConfig);
 
+  const disconnectBtn = $('disconnectBtn');
+  const startBtn = $('startBtn');
+  const stopBtn = $('stopBtn');
+  let listening = false;
+
+  function startListening() {
+    listening = true;
+    startBtn.classList.remove('show');
+    stopBtn.classList.add('show');
+    setStatus('waiting', '受信側の接続を待っています...');
+    log('待ち受け開始');
+  }
+
+  function stopListening() {
+    listening = false;
+    stopBtn.classList.remove('show');
+    startBtn.classList.add('show');
+    setStatus('waiting', '待ち受けを終了しました');
+    log('待ち受け終了');
+  }
+
+  stopBtn.addEventListener('click', stopListening);
+  startBtn.addEventListener('click', startListening);
+
+  function handleConnection(conn) {
+    if (!listening) {
+      log('待ち受け終了中のため接続を拒否: ' + conn.peer);
+      conn.close();
+      return;
+    }
+    log('受信側からデータ接続: ' + conn.peer);
+    conn.on('open', () => {
+      log('データ接続確立 → call発信');
+      const call = peer.call(conn.peer, micStream);
+      attachIceMonitor(call);
+      setStatus('connected', '<strong>接続中</strong><br>音声を配信しています');
+      setConnected();
+      startLevelMeter(micStream);
+
+      stopBtn.classList.remove('show');
+      startBtn.classList.remove('show');
+      disconnectBtn.classList.add('show');
+
+      disconnectBtn.onclick = () => { call.close(); };
+
+      call.on('close', () => {
+        log('通話終了 → 待ち受け状態に戻る');
+        disconnectBtn.classList.remove('show');
+        listening = true;
+        stopBtn.classList.add('show');
+        setStatus('waiting', '受信側の接続を待っています...');
+        orb.classList.remove('connected', 'active-audio');
+        rings.forEach(r => r.classList.remove('active'));
+      });
+    });
+    conn.on('error', e => log('connエラー: ' + e));
+  }
+
+  peer.on('connection', handleConnection);
+
   peer.on('open', (id) => {
     log('PeerID確立: ' + id);
     saveSenderId(id);
@@ -503,7 +563,7 @@ async function initSender() {
       }).catch(() => prompt('このURLをコピーしてください:', recvUrl));
     };
 
-    startListening(); // ★ PeerID確立後に待ち受け開始
+    startListening();
   });
 
   peer.on('error', (e) => {
@@ -517,64 +577,7 @@ async function initSender() {
       setStatus('error', 'エラーが発生しました');
     }
   });
-
-  const disconnectBtn = $('disconnectBtn');
-  const startBtn = $('startBtn');
-  const stopBtn = $('stopBtn');
-
-  function startListening() {
-    startBtn.classList.remove('show');
-    stopBtn.classList.add('show');
-    setStatus('waiting', '受信側の接続を待っています...');
-    peer.on('connection', handleConnection);
-  }
-
-  function stopListening() {
-    stopBtn.classList.remove('show');
-    startBtn.classList.add('show');
-    setStatus('waiting', '待ち受けを終了しました');
-    peer.off('connection', handleConnection);
-    log('待ち受け終了');
-  }
-
-  stopBtn.addEventListener('click', stopListening);
-
-  function handleConnection(conn) {
-    log('受信側からデータ接続: ' + conn.peer);
-    conn.on('open', () => {
-      log('データ接続確立 → call発信');
-      const call = peer.call(conn.peer, micStream);
-      attachIceMonitor(call);
-      setStatus('connected', '<strong>接続中</strong><br>音声を配信しています');
-      setConnected();
-      startLevelMeter(micStream);
-
-      disconnectBtn.classList.add('show');
-      stopBtn.classList.remove('show');
-      disconnectBtn.onclick = () => {
-        call.close();
-        disconnectBtn.classList.remove('show');
-        startBtn.classList.add('show');
-        setStatus('waiting', '待ち受けを停止しました');
-        orb.classList.remove('connected', 'active-audio');
-        rings.forEach(r => r.classList.remove('active'));
-        log('手動切断');
-      };
-
-      call.on('close', () => {
-        log('通話終了');
-        disconnectBtn.classList.remove('show');
-        stopBtn.classList.add('show');
-        setStatus('waiting', '受信側の接続を待っています...');
-        orb.classList.remove('connected', 'active-audio');
-        rings.forEach(r => r.classList.remove('active'));
-      });
-    });
-    conn.on('error', e => log('connエラー: ' + e));
-  }
-
-  startBtn.addEventListener('click', startListening);
-}
+} // initSender 終了
 
 // ─── 受信側 ───────────────────────────────────────────────
 function initReceiver(roomId) {
