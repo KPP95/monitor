@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>つながり</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@300;400&family=Space+Mono&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --accent: #c8a97e;
+    --accent2: #7e9ec8;
+    --text: #e8e4dc;
+    --muted: #5a5a6e;
+    --danger: #c87e7e;
+    --success: #7ec8a0;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .bg-rings {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none; z-index: 0;
+  }
+
+  .ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 1px solid rgba(200,169,126,0.06);
+    animation: expand 8s ease-out infinite;
+  }
+  .ring:nth-child(1){width:200px;height:200px;animation-delay:0s;}
+  .ring:nth-child(2){width:400px;height:400px;animation-delay:2s;}
+  .ring:nth-child(3){width:600px;height:600px;animation-delay:4s;}
+  .ring:nth-child(4){width:800px;height:800px;animation-delay:6s;}
+
+  @keyframes expand {
+    0%{opacity:0.5;transform:scale(0.8);}
+    100%{opacity:0;transform:scale(1.2);}
+  }
+  .ring.active {
+    border-color: rgba(200,169,126,0.2);
+    animation: expand-active 3s ease-out infinite;
+  }
+  @keyframes expand-active {
+    0%{opacity:0.8;transform:scale(0.8);}
+    100%{opacity:0;transform:scale(1.3);}
+  }
+
+  .container {
+    position: relative; z-index: 1;
+    width: 100%; max-width: 420px;
+    padding: 40px 24px;
+    display: flex; flex-direction: column; align-items: center; gap: 28px;
+  }
+
+  .header { text-align: center; }
+  .mode-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px; letter-spacing: 0.3em;
+    color: var(--muted); text-transform: uppercase; margin-bottom: 8px;
+  }
+  .title { font-size: 28px; font-weight: 300; letter-spacing: 0.15em; }
+  .title span { color: var(--accent); }
+
+  /* 役割選択 */
+  .role-select {
+    display: flex; flex-direction: column; align-items: center; gap: 20px; width: 100%;
+  }
+  .role-desc { font-size: 13px; color: var(--muted); text-align: center; line-height: 1.8; }
+  .role-desc strong { color: var(--text); font-weight: 400; }
+
+  .role-buttons { display: flex; gap: 12px; width: 100%; }
+  .role-btn {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid #1e1e2e;
+    border-radius: 12px;
+    padding: 20px 12px;
+    cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    transition: all 0.2s; color: var(--text);
+  }
+  .role-btn .icon { font-size: 28px; }
+  .role-btn .label {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px; letter-spacing: 0.2em;
+    color: var(--muted); text-transform: uppercase;
+  }
+  .role-btn .desc { font-size: 12px; color: var(--muted); text-align: center; line-height: 1.5; }
+  .role-btn.send:hover,.role-btn.send:active { border-color: var(--accent); }
+  .role-btn.recv:hover,.role-btn.recv:active { border-color: var(--accent2); }
+
+  /* メイン画面 */
+  .main-view { display: none; flex-direction: column; align-items: center; gap: 28px; width: 100%; }
+  .main-view.show { display: flex; }
+
+  .orb-wrapper {
+    position: relative; width: 160px; height: 160px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .orb {
+    width: 120px; height: 120px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #2a2a3e, #0a0a0f);
+    border: 1px solid var(--muted);
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.5s ease;
+  }
+  .orb.connected {
+    border-color: var(--accent);
+    box-shadow: 0 0 40px rgba(200,169,126,0.2), 0 0 80px rgba(200,169,126,0.05);
+  }
+  .orb.active-audio { animation: orb-pulse 1.5s ease-in-out infinite; }
+  @keyframes orb-pulse {
+    0%,100%{transform:scale(1);}
+    50%{transform:scale(1.06);box-shadow:0 0 60px rgba(200,169,126,0.4);}
+  }
+  .orb-icon { font-size: 36px; opacity: 0.6; transition: opacity 0.3s; }
+  .orb.connected .orb-icon { opacity: 1; }
+
+  .level-bars {
+    position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 3px; align-items: flex-end;
+  }
+  .bar { width: 3px; background: var(--accent); border-radius: 2px; transition: height 0.1s ease; opacity: 0; }
+  .bar.active { opacity: 1; }
+
+  .status-block {
+    text-align: center; min-height: 56px;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+  }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); transition: background 0.3s; }
+  .status-dot.waiting { background: var(--accent2); animation: blink 2s ease-in-out infinite; }
+  .status-dot.connected { background: var(--success); }
+  .status-dot.error { background: var(--danger); }
+  @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+
+  .status-text { font-size: 14px; font-weight: 300; color: var(--muted); letter-spacing: 0.05em; line-height: 1.6; }
+  .status-text strong { color: var(--text); font-weight: 400; }
+
+  .error-box {
+    background: rgba(200,126,126,0.1); border: 1px solid rgba(200,126,126,0.3);
+    border-radius: 8px; padding: 12px 16px; font-size: 13px;
+    color: var(--danger); width: 100%; text-align: center; display: none;
+  }
+  .error-box.show { display: block; }
+
+  .sep { width: 40px; height: 1px; background: #1e1e2e; }
+
+  .info-box {
+    background: var(--surface); border: 1px solid #1e1e2e;
+    border-radius: 12px; padding: 16px 20px; width: 100%;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .info-label { font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 0.25em; color: var(--muted); text-transform: uppercase; }
+  .info-value { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--accent); word-break: break-all; line-height: 1.5; }
+
+  .share-btn {
+    background: none; border: 1px solid var(--muted); color: var(--muted);
+    padding: 10px 20px; border-radius: 8px;
+    font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 0.15em;
+    cursor: pointer; transition: all 0.2s; width: 100%; text-transform: uppercase; display: none;
+  }
+  .share-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .share-btn.copied { border-color: var(--success); color: var(--success); }
+
+  .volume-control { width: 100%; display: none; flex-direction: column; gap: 8px; }
+  .volume-control.show { display: flex; }
+  .volume-label { font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 0.25em; color: var(--muted); text-transform: uppercase; }
+  input[type=range] { -webkit-appearance: none; width: 100%; height: 2px; background: var(--muted); border-radius: 2px; outline: none; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); cursor: pointer; }
+
+  /* タップオーバーレイ */
+  .tap-overlay {
+    position: fixed; inset: 0; background: rgba(10,10,15,0.92); z-index: 100;
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    gap: 24px; backdrop-filter: blur(8px); cursor: pointer; transition: opacity 0.4s ease;
+  }
+  .tap-overlay.show { display: flex; }
+  .tap-overlay.hidden { opacity: 0; pointer-events: none; }
+  .tap-icon { font-size: 56px; animation: tap-bounce 2s ease-in-out infinite; }
+  @keyframes tap-bounce { 0%,100%{transform:scale(1);} 50%{transform:scale(1.1);} }
+  .tap-text { font-size: 18px; font-weight: 300; letter-spacing: 0.15em; color: var(--accent); }
+  .tap-sub { font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 0.2em; color: var(--muted); text-transform: uppercase; }
+
+  .footer { font-size: 11px; color: var(--muted); text-align: center; line-height: 1.8; }
+
+  .debug-log { width: 100%; max-height: 120px; overflow-y: auto; font-family: 'Space Mono', monospace; font-size: 10px; color: var(--muted); line-height: 1.6; display: none; }
+</style>
+</head>
+<body>
+
+<div class="tap-overlay" id="tapOverlay">
+  <div class="tap-icon">👂</div>
+  <div class="tap-text">タップして聴く</div>
+  <div class="tap-sub">Tap anywhere to start</div>
+</div>
+
+<div class="bg-rings">
+  <div class="ring"></div><div class="ring"></div>
+  <div class="ring"></div><div class="ring"></div>
+</div>
+
+<div class="container">
+  <div class="header">
+    <div class="mode-label" id="modeLabel">つながり</div>
+    <div class="title">つな<span>が</span>り</div>
+  </div>
+
+  <!-- 役割選択 -->
+  <div class="role-select" id="roleSelect">
+    <div class="role-desc">
+      最初に役割を選ぶと、IDが自動で発行・保存されます。<br>
+      次回以降は再読み込みしても<strong>同じIDで繋がります</strong>。
+    </div>
+    <div class="role-buttons">
+      <button class="role-btn send" id="btnSend">
+        <span class="icon">🎙</span>
+        <span class="label">送信</span>
+        <span class="desc">音声を配信する側</span>
+      </button>
+      <button class="role-btn recv" id="btnRecv">
+        <span class="icon">👂</span>
+        <span class="label">受信</span>
+        <span class="desc">音声を聴く側</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- メイン -->
+  <div class="main-view" id="mainView">
+    <div class="orb-wrapper">
+      <div class="orb" id="orb">
+        <span class="orb-icon" id="orbIcon">🎙</span>
+      </div>
+      <div class="level-bars">
+        <div class="bar" style="height:8px"></div>
+        <div class="bar" style="height:12px"></div>
+        <div class="bar" style="height:6px"></div>
+        <div class="bar" style="height:16px"></div>
+        <div class="bar" style="height:10px"></div>
+      </div>
+    </div>
+
+    <div class="status-block">
+      <div class="status-dot" id="statusDot"></div>
+      <div class="status-text" id="statusText">初期化中...</div>
+    </div>
+
+    <div class="error-box" id="errorBox"></div>
+    <div class="sep"></div>
+
+    <div class="info-box" id="infoBox" style="display:none">
+      <div class="info-label" id="infoLabel">接続ID</div>
+      <div class="info-value" id="infoValue"></div>
+    </div>
+
+    <button class="share-btn" id="shareBtn">受信側URLをコピー</button>
+
+    <div class="volume-control" id="volumeControl">
+      <div class="volume-label">音量</div>
+      <input type="range" id="volumeSlider" min="0" max="1" step="0.05" value="1">
+    </div>
+
+    <div class="footer" id="footer"></div>
+    <div class="debug-log" id="debugLog"></div>
+  </div>
+</div>
+
+<audio id="remoteAudio" playsinline></audio>
+
+<script>
+const $ = id => document.getElementById(id);
+const orb = $('orb'), orbIcon = $('orbIcon');
+const statusDot = $('statusDot'), statusText = $('statusText');
+const rings = document.querySelectorAll('.ring');
+const tapOverlay = $('tapOverlay');
+const remoteAudio = $('remoteAudio');
+const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
+if (DEBUG) $('debugLog').style.display = 'block';
+
+function log(msg) {
+  if (!DEBUG) return;
+  const t = new Date().toLocaleTimeString('ja-JP');
+  const dl = $('debugLog');
+  dl.innerHTML += `<div>${t} ${msg}</div>`;
+  dl.scrollTop = dl.scrollHeight;
+}
+function setStatus(cls, msg) {
+  statusDot.className = 'status-dot ' + cls;
+  statusText.innerHTML = msg;
+}
+function showError(msg) {
+  $('errorBox').textContent = msg;
+  $('errorBox').classList.add('show');
+}
+function setConnected() {
+  orb.classList.add('connected');
+  rings.forEach(r => r.classList.add('active'));
+}
+
+function startLevelMeter(stream) {
+  try {
+    const ctx = new AudioContext();
+    const an = ctx.createAnalyser();
+    an.fftSize = 32;
+    ctx.createMediaStreamSource(stream).connect(an);
+    const data = new Uint8Array(an.frequencyBinCount);
+    const bars = document.querySelectorAll('.bar');
+    (function tick() {
+      an.getByteFrequencyData(data);
+      const avg = data.reduce((a,b)=>a+b,0)/data.length;
+      if (avg > 5) {
+        orb.classList.add('active-audio');
+        bars.forEach((b,i)=>{ b.classList.add('active'); b.style.height=(4+(data[i*2]/255)*24)+'px'; });
+      } else {
+        orb.classList.remove('active-audio');
+        bars.forEach(b=>b.classList.remove('active'));
+      }
+      requestAnimationFrame(tick);
+    })();
+  } catch(e) {}
+}
+
+// ─── ID管理 ──────────────────────────────────────────────
+// 送信側IDをlocalStorageに永続化
+// 初回: PeerJSが自動生成したIDを保存
+// 以降: 保存済みIDをそのまま使用
+
+function getSavedSenderId() {
+  return localStorage.getItem('tg-sender-id') || null;
+}
+function saveSenderId(id) {
+  localStorage.setItem('tg-sender-id', id);
+}
+
+// ─── 送信側 ───────────────────────────────────────────────
+async function initSender() {
+  $('roleSelect').style.display = 'none';
+  $('mainView').classList.add('show');
+  $('modeLabel').textContent = '送信モード';
+  orbIcon.textContent = '🎙';
+  $('footer').innerHTML = '画面を消さずに充電しながら待機してください';
+
+  // ★ 起動時にマイクを先取得
+  setStatus('waiting', 'マイクの許可を確認中...');
+  let micStream;
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    log('マイク取得成功');
+  } catch(e) {
+    showError('マイクの許可が必要です。ブラウザの設定を確認してください。');
+    setStatus('error', 'マイクのアクセスが必要です');
+    return;
+  }
+
+  // ★ 保存済みIDがあればそれを指定、なければPeerJSが自動生成
+  const savedId = getSavedSenderId();
+  log('保存済みID: ' + (savedId || 'なし（新規生成）'));
+  const peer = new Peer(savedId || undefined, { debug: DEBUG ? 2 : 0 });
+
+  peer.on('open', (id) => {
+    log('PeerID確立: ' + id);
+    saveSenderId(id); // ★ 生成されたIDを保存（初回のみ意味がある）
+
+    $('infoBox').style.display = 'flex';
+    $('infoValue').textContent = id;
+
+    const recvUrl = location.origin + location.pathname + '?mode=recv&room=' + encodeURIComponent(id);
+    const shareBtn = $('shareBtn');
+    shareBtn.style.display = 'block';
+    shareBtn.onclick = () => {
+      navigator.clipboard.writeText(recvUrl).then(() => {
+        shareBtn.textContent = 'コピーしました ✓';
+        shareBtn.classList.add('copied');
+        setTimeout(() => { shareBtn.textContent = '受信側URLをコピー'; shareBtn.classList.remove('copied'); }, 2000);
+      }).catch(() => prompt('このURLをコピーしてください:', recvUrl));
+    };
+
+    setStatus('waiting', '受信側の接続を待っています...');
+  });
+
+  peer.on('error', (e) => {
+    log('peerエラー: ' + e.type);
+    if (e.type === 'unavailable-id') {
+      // 保存済みIDが他のセッションに使われている → 少し待って再接続
+      log('ID競合 → 5秒後に再接続');
+      setStatus('waiting', '前のセッションを切断中...<br>しばらくお待ちください');
+      setTimeout(() => location.reload(), 5000);
+    } else {
+      showError('接続エラー: ' + e.type);
+      setStatus('error', 'エラーが発生しました');
+    }
+  });
+
+  peer.on('connection', (conn) => {
+    log('受信側からデータ接続: ' + conn.peer);
+    conn.on('open', () => {
+      log('データ接続確立 → call発信');
+      // ★ 取得済みストリームをそのまま使用（許可ダイアログなし）
+      const call = peer.call(conn.peer, micStream);
+      setStatus('connected', '<strong>接続中</strong><br>音声を配信しています');
+      setConnected();
+      startLevelMeter(micStream);
+      call.on('close', () => {
+        log('通話終了');
+        setStatus('waiting', '受信側の接続を待っています...');
+        orb.classList.remove('connected', 'active-audio');
+        rings.forEach(r => r.classList.remove('active'));
+      });
+    });
+    conn.on('error', e => log('connエラー: ' + e));
+  });
+}
+
+// ─── 受信側 ───────────────────────────────────────────────
+function initReceiver(roomId) {
+  $('roleSelect').style.display = 'none';
+  $('mainView').classList.add('show');
+  $('modeLabel').textContent = '受信モード';
+  orbIcon.textContent = '👂';
+  $('volumeControl').classList.add('show');
+
+  const volumeSlider = $('volumeSlider');
+  volumeSlider.addEventListener('input', () => { remoteAudio.volume = volumeSlider.value; });
+
+  $('infoBox').style.display = 'flex';
+  $('infoLabel').textContent = '送信側ID';
+  $('infoValue').textContent = roomId;
+
+  let pendingStream = null;
+  tapOverlay.classList.add('show');
+
+  function playStream(stream) {
+    remoteAudio.srcObject = stream;
+    remoteAudio.volume = volumeSlider.value;
+    remoteAudio.play().then(() => {
+      log('再生開始');
+      setStatus('connected', '<strong>接続中</strong><br>音声を受信しています');
+      setConnected();
+      orbIcon.textContent = '🔊';
+    }).catch(() => showError('再生に失敗しました。もう一度タップしてください。'));
+  }
+
+  tapOverlay.addEventListener('click', () => {
+    tapOverlay.classList.add('hidden');
+    setTimeout(() => tapOverlay.classList.remove('show', 'hidden'), 400);
+    if (pendingStream) playStream(pendingStream);
+    else setStatus('waiting', '送信側の応答を待っています...');
+  });
+
+  setStatus('waiting', '送信側に接続しています...');
+  log('受信側起動 → 送信側: ' + roomId);
+
+  const peer = new Peer(undefined, { debug: DEBUG ? 2 : 0 });
+
+  peer.on('open', (myId) => {
+    log('受信側PeerID: ' + myId);
+    const conn = peer.connect(roomId, { reliable: true });
+    conn.on('open', () => {
+      log('データ接続確立 → callを待機');
+      setStatus('waiting', '送信側の応答を待っています...');
+    });
+    conn.on('error', e => log('connエラー: ' + e));
+  });
+
+  peer.on('call', (call) => {
+    log('callを受信 → answer');
+    call.answer();
+    call.on('stream', (remoteStream) => {
+      log('音声ストリーム受信成功');
+      pendingStream = remoteStream;
+      const overlayActive = tapOverlay.classList.contains('show') && !tapOverlay.classList.contains('hidden');
+      if (overlayActive) {
+        setStatus('waiting', '<strong>準備完了</strong><br>タップして聴き始めてください');
+      } else {
+        playStream(remoteStream);
+      }
+    });
+    call.on('close', () => {
+      setStatus('error', '接続が切れました<br>ページを再読み込みしてください');
+      orb.classList.remove('connected');
+      rings.forEach(r => r.classList.remove('active'));
+    });
+  });
+
+  peer.on('error', (e) => {
+    log('peerエラー: ' + e.type);
+    if (e.type === 'peer-unavailable') {
+      showError('送信側が見つかりません。先に送信側を開いてください。');
+    } else {
+      showError('エラー: ' + e.type);
+    }
+    setStatus('error', 'エラーが発生しました');
+  });
+}
+
+// ─── 起動処理 ─────────────────────────────────────────────
+const params = new URLSearchParams(location.search);
+const urlMode = params.get('mode');
+const urlRoom = params.get('room');
+
+if (urlMode === 'recv' && urlRoom) {
+  // 受信側URL経由で直接起動
+  initReceiver(urlRoom);
+} else if (urlMode === 'send') {
+  initSender();
+} else {
+  // 役割選択画面
+  // 保存済み役割があれば自動起動
+  const savedRole = localStorage.getItem('tg-role');
+  const savedId = getSavedSenderId();
+
+  if (savedRole === 'send' && savedId) {
+    // 送信側として直接起動
+    initSender();
+  } else if (savedRole === 'recv' && savedId) {
+    // 受信側として直接起動
+    initReceiver(savedId);
+  } else {
+    // 初回：役割選択
+    $('btnSend').addEventListener('click', () => {
+      localStorage.setItem('tg-role', 'send');
+      initSender();
+    });
+    $('btnRecv').addEventListener('click', () => {
+      // 受信側は送信側IDが必要なので、URLから取得できない場合は案内
+      showError('受信側は送信側から共有されたURLを開いてください。');
+    });
+  }
+}
+</script>
+</body>
+</html>
