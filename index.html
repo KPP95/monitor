@@ -444,17 +444,19 @@ async function initSender() {
     return;
   }
 
-  // ミュートボタン設定（マイク取得後すぐ有効化）
+  // ミュートボタン設定
   const muteBtn = $('muteBtn');
-  muteBtn.classList.add('show');
   let muted = false;
-  muteBtn.addEventListener('click', () => {
-    muted = !muted;
+
+  function setMute(val) {
+    muted = val;
     micStream.getAudioTracks().forEach(t => t.enabled = !muted);
     muteBtn.textContent = muted ? '🔇 ミュート中' : '🎙 ミュート';
     muteBtn.classList.toggle('muted', muted);
     log(muted ? 'ミュートON' : 'ミュートOFF');
-  });
+  }
+
+  muteBtn.addEventListener('click', () => setMute(!muted));
 
   // ★ 保存済みIDがあればそれを指定、なければPeerJSが自動生成
   const savedId = getSavedSenderId();
@@ -524,15 +526,19 @@ async function initSender() {
       setConnected();
       startLevelMeter(micStream);
 
+      // 通話中：切断・ミュートのみ表示
       stopBtn.classList.remove('show');
       startBtn.classList.remove('show');
       disconnectBtn.classList.add('show');
+      muteBtn.classList.add('show');
 
       disconnectBtn.onclick = () => { call.close(); };
 
       call.on('close', () => {
         log('通話終了 → 待ち受け状態に戻る');
         disconnectBtn.classList.remove('show');
+        muteBtn.classList.remove('show');
+        setMute(false); // ミュート解除
         listening = true;
         stopBtn.classList.add('show');
         setStatus('waiting', '受信側の接続を待っています...');
